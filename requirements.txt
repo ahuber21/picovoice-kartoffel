@@ -1,3 +1,4 @@
 picovoice
 pvrecorder
 python-dotenv
+requests

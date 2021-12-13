@@ -21,6 +21,9 @@ import numpy as np
 from picovoice import Picovoice
 from pvrecorder import PvRecorder
 
+from lib.deconz import KaffeeBarGui, Kaffeemaschine
+gui = KaffeeBarGui()
+coffee_machine = Kaffeemaschine()
 
 class PicovoiceApp(Thread):
     def __init__(
@@ -59,6 +62,7 @@ class PicovoiceApp(Thread):
     @staticmethod
     def _wake_word_callback():
         print('[wake word]\n')
+        gui.show_listening()
 
     @staticmethod
     def _inference_callback(inference):
@@ -70,8 +74,16 @@ class PicovoiceApp(Thread):
                 print("    %s : '%s'" % (slot, value))
             print('  }')
             print('}\n')
+            if inference.intent == "changeState":
+                if inference.slots["state"] == "an":
+                    coffee_machine.on()
+                elif inference.slots["state"] == "aus":
+                    coffee_machine.off()
+            gui.done()
+            gui.acknowledge()
         else:
             print("Didn't understand the command.\n")
+            gui.done()
 
     def run(self):
         recorder = None
