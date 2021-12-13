@@ -1,15 +1,3 @@
-#
-# Copyright 2020-2021 Picovoice Inc.
-#
-# You may not use this file except in compliance with the license. A copy of the license is located in the "LICENSE"
-# file accompanying this source.
-#
-# Unless required by applicable law or agreed to in writing, software distributed under the License is distributed on
-# an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License for the
-# specific language governing permissions and limitations under the License.
-#
-
-import argparse
 import os
 import sys
 import struct
@@ -22,24 +10,27 @@ from picovoice import Picovoice
 from pvrecorder import PvRecorder
 
 from lib.deconz import KaffeeBarGui, Kaffeemaschine
+
 gui = KaffeeBarGui()
 coffee_machine = Kaffeemaschine()
 
+
 class PicovoiceApp(Thread):
     def __init__(
-            self,
-            access_key,
-            audio_device_index,
-            keyword_path,
-            context_path,
-            porcupine_library_path=None,
-            porcupine_model_path=None,
-            porcupine_sensitivity=0.5,
-            rhino_library_path=None,
-            rhino_model_path=None,
-            rhino_sensitivity=0.5,
-            require_endpoint=True,
-            output_path=None):
+        self,
+        access_key,
+        audio_device_index,
+        keyword_path,
+        context_path,
+        porcupine_library_path=None,
+        porcupine_model_path=None,
+        porcupine_sensitivity=0.5,
+        rhino_library_path=None,
+        rhino_model_path=None,
+        rhino_sensitivity=0.5,
+        require_endpoint=True,
+        output_path=None,
+    ):
         super().__init__()
 
         self._picovoice = Picovoice(
@@ -54,26 +45,27 @@ class PicovoiceApp(Thread):
             rhino_library_path=rhino_library_path,
             rhino_model_path=rhino_model_path,
             rhino_sensitivity=rhino_sensitivity,
-            require_endpoint=require_endpoint)
+            require_endpoint=require_endpoint,
+        )
 
         self.audio_device_index = audio_device_index
         self.output_path = output_path
 
     @staticmethod
     def _wake_word_callback():
-        print('[wake word]\n')
+        print("[wake word]\n")
         gui.show_listening()
 
     @staticmethod
     def _inference_callback(inference):
         if inference.is_understood:
-            print('{')
+            print("{")
             print("  intent : '%s'" % inference.intent)
-            print('  slots : {')
+            print("  slots : {")
             for slot, value in inference.slots.items():
                 print("    %s : '%s'" % (slot, value))
-            print('  }')
-            print('}\n')
+            print("  }")
+            print("}\n")
             if inference.intent == "changeState":
                 if inference.slots["state"] == "an":
                     coffee_machine.on()
@@ -90,7 +82,10 @@ class PicovoiceApp(Thread):
         wav_file = None
 
         try:
-            recorder = PvRecorder(device_index=self.audio_device_index, frame_length=self._picovoice.frame_length)
+            recorder = PvRecorder(
+                device_index=self.audio_device_index,
+                frame_length=self._picovoice.frame_length,
+            )
             recorder.start()
 
             if self.output_path is not None:
@@ -98,7 +93,7 @@ class PicovoiceApp(Thread):
                 wav_file.setparams((1, 2, 16000, 512, "NONE", "NONE"))
 
             print(f"Using device: {recorder.selected_device}")
-            print('[Listening ...]')
+            print("[Listening ...]")
 
             while True:
                 pcm = recorder.read()
@@ -108,8 +103,8 @@ class PicovoiceApp(Thread):
 
                 self._picovoice.process(pcm)
         except KeyboardInterrupt:
-            sys.stdout.write('\b' * 2)
-            print('Stopping ...')
+            sys.stdout.write("\b" * 2)
+            print("Stopping ...")
         finally:
             if recorder is not None:
                 recorder.delete()
@@ -124,13 +119,15 @@ class PicovoiceApp(Thread):
         devices = PvRecorder.get_audio_devices()
 
         for i in range(len(devices)):
-            print(f'index: {i}, device name: {devices[i]}')
+            print(f"index: {i}, device name: {devices[i]}")
 
 
 def main():
     if not os.getenv("AUDIO_DEVICE_INDEX"):
         PicovoiceApp.show_audio_devices()
-        print("Please select a device from the above list and add its index as AUDIO_DEVICE_INDEX to your .env file")
+        print(
+            "Please select a device from the above list and add its index as AUDIO_DEVICE_INDEX to your .env file"
+        )
     else:
         PicovoiceApp(
             access_key=os.environ["ACCESS_KEY"],
@@ -142,13 +139,14 @@ def main():
             rhino_model_path=cwd(os.environ["RHINO_MODEL_FILE_PATH"]),
             rhino_sensitivity=0.5,
             # require_endpoint=require_endpoint,
-            output_path=None).run()
+            output_path=None,
+        ).run()
 
 
 def cwd(relative):
-   return os.path.join(os.getcwd(), relative)
+    return os.path.join(os.getcwd(), relative)
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     load_dotenv()
     main()
