@@ -7,7 +7,8 @@ from threading import Thread, Event
 logging.basicConfig(level=logging.INFO)
 
 KEY = "1B9FCFEEF1"
-BASE_URL = f"http://192.168.0.214:8081/api/{KEY}/lights"
+LIGHTS_URL = f"http://192.168.0.214:8081/api/{KEY}/lights"
+GROUPS_URL = f"http://192.168.0.214:8081/api/{KEY}/groups"
 MIN_BRIGHTNESS = 20
 
 
@@ -15,28 +16,58 @@ class ShowListeningThread(Thread):
     def __init__(self, gui):
         self.gui = gui
         self.stop = Event()
+        self.stop.clear()
         self.orig_on = gui.on
         self.orig_bri = gui.bri
         super().__init__()
 
     def run(self):
         bri = max(MIN_BRIGHTNESS, self.gui.bri)
-        while not self.stop.is_set():
+        stop = False
+        while not stop and not self.stop.is_set():
             for x in range(2):
-                state = {"on": True, "bri": bri + 20 * x}
-                self.gui.set_state(state)
+                if self.stop.is_set():
+                    stop = True
+                    break
+                self.gui.set_state(on=True, bri=bri+20*x)
                 time.sleep(0.2)
+                if self.stop.is_set():
+                    stop = True
+                    break
+            if stop:
+                break
             for x in reversed(range(1)):
-                state = {"on": True, "bri": bri + 20 * x}
-                self.gui.set_state(state)
+                if self.stop.is_set():
+                    stop = True
+                    break
+                self.gui.set_state(on=True, bri=bri+20*x)
                 time.sleep(0.2)
+                if self.stop.is_set():
+                    stop = True
+                    break
         # restore original state
-        self.gui.set_state({"on": self.orig_on, "bri": self.orig_bri})
+        self.gui.set_state(on=self.orig_on, bri=self.orig_bri)
 
+
+class AcknowledgeThread(Thread):
+    def __init__(self, gui):
+        self.gui = gui
+        super().__init__()
+
+    def run(self):
+        orig = {"on": self.gui.on, "bri": self.gui.bri}        
+        for _ in range(2):
+            self.gui.set_state(on=True, bri=110)
+            time.sleep(0.2)
+            self.gui.set_state(on=True, bri=MIN_BRIGHTNESS)
+            time.sleep(0.2)
+        self.gui.set_state(**orig)
+        
 
 class DeconzClient:
-    def __init__(self, name):
-        r = requests.get(BASE_URL)
+    def __init__(self, name, url):
+        self.url = url
+        r = requests.get(self.url)
         if r.status_code != 200:
             logging.error("Failed to GET current light status")
             return
@@ -47,24 +78,47 @@ class DeconzClient:
             logging.error("Failed to find object with name = %s", name)
             self._id = 0
 
-    def set_state(self, state):
-        url = f"{BASE_URL}/{self._id}/state"
-        r = requests.put(url, json=state)
+    def set_state(self, **kwargs):
+        url = f"{self.url}/{self._id}/state"
+        r = requests.put(url, json=kwargs)
         if r.status_code != 200:
-            logging.error("Failed to PUT new light status: %s", json.dumps(state))
+            logging.error("Failed to PUT new light status: %s", json.dumps(kwargs))
             r.raise_for_status()
             return
-        logging.info("Updated state to %s", json.dumps(state))
+        logging.info("Updated state to %s", json.dumps(kwargs))
+
+    def set_action(self, **kwargs):
+        url = f"{self.url}/{self._id}/action"
+        r = requests.put(url, json=kwargs)
+        if r.status_code != 200:
+            logging.error("Failed to PUT new group status: %s", json.dumps(kwargs))
+            r.raise_for_status()
+            return
+        logging.info("Updated action to %s", json.dumps(kwargs))
+        
+
+    def recall_scene(self, scene_name):
+        # need to find the id
+        data = self._refresh()
+        for scene in data["scenes"]:
+            if scene["name"] == scene_name:
+                url = f"{self.url}/{self._id}/scenes/{scene['id']}/recall"
+                r = requests.put(url, timeout=0.025)
+                if r.status_code != 200:
+                    logging.error("Failed to PUT scene: %s", scene_name)
+                    r.raise_for_status()
+                    return
+                logging.info("Updated scene to %s", scene_name)
 
     def _refresh(self):
-        url = f"{BASE_URL}/{self._id}"
+        url = f"{self.url}/{self._id}"
         r = requests.get(url, timeout=0.025)
         return json.loads(r.text)
 
 
 class KaffeeBarGui(DeconzClient):
     def __init__(self):
-        super().__init__("Kaffeebar")
+        super().__init__("Kaffeebar", LIGHTS_URL)
         self.bri = 0
         self.on = False
         self.refresh()
@@ -80,79 +134,45 @@ class KaffeeBarGui(DeconzClient):
         self.thread.start()
 
     def done(self):
-        logging.info("DONE")
         if self.thread:
-            logging.info("Stopping thread")
             self.thread.stop.set()
+            self.thread.join()
             self.thread = None
         self.refresh()
 
     def acknowledge(self):
         assert self.thread is None
         self.refresh()
-        orig = {"on": self.on, "bri": self.bri}
-        for _ in range(2):
-            self.set_state({"on": True, "bri": 110})
-            time.sleep(0.25)
-            self.set_state({"on": True, "bri": MIN_BRIGHTNESS})
-            time.sleep(0.25)
-        self.set_state(orig)
+        self.thread = AcknowledgeThread(self)
+        self.thread.start()
+        self.thread.join()
+        self.thread = None
 
 
 class Kaffeemaschine(DeconzClient):
     def __init__(self):
-        super().__init__("Kaffeemaschine")
+        super().__init__("Kaffeemaschine", LIGHTS_URL)
 
     def on(self):
-        self.set_state({"on": True})
+        self.set_state(on=True)
 
     def off(self):
-        self.set_state({"on": False})
+        self.set_state(on=False)
 
 
-def refresh():
-    r = requests.get(BASE_URL)
-    if r.status_code != 200:
-        logging.error("Failed to GET current light status")
-        return
+class Lights(DeconzClient):
+    def __init__(self):
+        super().__init__("Alle Lichter", GROUPS_URL)
 
-    # convert status to object by parsing the json
-    data = json.loads(r.text)
+    def on(self):
+        self.set_action(on=True)
 
-    # find the object for which the script is configured
-    try:
-        my_id, my_obj = [
-            (_id, obj) for _id, obj in data.items() if obj[ATTRIB] == TARGET
-        ][0]
-    except:
-        logging.error("Failed to find object with %s = %s", ATTRIB, TARGET)
-        return
+    def off(self):
+        self.set_action(on=False)
 
-    # nothing to do if the state is off
-    if not my_obj["state"]["on"]:
-        return
-
-    # repeat if the value has changed
-    current_bri = my_obj["state"]["bri"]
-    global VALUE
-    if current_bri == VALUE:
-        logging.debug("current_bri unchanged at %d", current_bri)
-        return
-
-    # make the request to set the bri again
-    url = f"{BASE_URL}/{my_id}/state"
-    r = requests.put(url, json={"on": True, "bri": current_bri})
-
-    if r.status_code != 200:
-        logging.error("Failed to PUT current light status")
-        r.raise_for_status()
-        return
-    logging.info("Updated bri to %d", current_bri)
-    VALUE = current_bri
-
+    def scene(self, scene_name):
+        self.recall_scene(scene_name)
 
 if __name__ == "__main__":
-    gui = KaffeeBarGui()
-    gui.show_listening()
-    time.sleep(3)
-    gui.done()
+    lights = Lights()
+    lights.off()

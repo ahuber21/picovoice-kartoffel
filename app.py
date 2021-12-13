@@ -9,11 +9,11 @@ import numpy as np
 from picovoice import Picovoice
 from pvrecorder import PvRecorder
 
-from lib.deconz import KaffeeBarGui, Kaffeemaschine
+from lib.deconz import KaffeeBarGui, Kaffeemaschine, Lights
 
 gui = KaffeeBarGui()
 coffee_machine = Kaffeemaschine()
-
+lights = Lights()
 
 class PicovoiceApp(Thread):
     def __init__(
@@ -59,6 +59,8 @@ class PicovoiceApp(Thread):
     @staticmethod
     def _inference_callback(inference):
         if inference.is_understood:
+            gui.done()
+            gui.acknowledge()
             print("{")
             print("  intent : '%s'" % inference.intent)
             print("  slots : {")
@@ -67,12 +69,24 @@ class PicovoiceApp(Thread):
             print("  }")
             print("}\n")
             if inference.intent == "changeState":
-                if inference.slots["state"] == "an":
-                    coffee_machine.on()
-                elif inference.slots["state"] == "aus":
-                    coffee_machine.off()
-            gui.done()
-            gui.acknowledge()
+                if inference.slots["object"] in ("Maschine", "Maschinchen"):
+                    if inference.slots["state"] == "an":
+                        coffee_machine.on()
+                    elif inference.slots["state"] == "aus":
+                        coffee_machine.off()
+                elif inference.slots["object"] == "Lichter":
+                    if inference.slots["state"] == "an":
+                        lights.on()
+                    elif inference.slots["state"] == "aus":
+                        lights.off()
+                    elif inference.slots["state"] == "Film":
+                        lights.recall_scene("Film")
+                    elif inference.slots["state"] == "Frühstück":
+                        lights.recall_scene("Frühstück")
+                    elif inference.slots["state"] == "Tag":
+                        lights.recall_scene("Tag")
+                    elif inference.slots["state"] == "Bar":
+                        lights.recall_scene("Kaffeebar only")
         else:
             print("Didn't understand the command.\n")
             gui.done()
