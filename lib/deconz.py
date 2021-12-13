@@ -23,16 +23,16 @@ class ShowListeningThread(Thread):
         bri = max(MIN_BRIGHTNESS, self.gui.bri)
         while not self.stop.is_set():
             for x in range(2):
-                state = {"on": True, "bri": bri + 20*x}
+                state = {"on": True, "bri": bri + 20 * x}
                 self.gui.set_state(state)
                 time.sleep(0.2)
             for x in reversed(range(1)):
-                state = {"on": True, "bri": bri + 20*x}
+                state = {"on": True, "bri": bri + 20 * x}
                 self.gui.set_state(state)
                 time.sleep(0.2)
         # restore original state
         self.gui.set_state({"on": self.orig_on, "bri": self.orig_bri})
-        
+
 
 class DeconzClient:
     def __init__(self, name):
@@ -46,7 +46,7 @@ class DeconzClient:
         except IndexError:
             logging.error("Failed to find object with name = %s", name)
             self._id = 0
-        
+
     def set_state(self, state):
         url = f"{BASE_URL}/{self._id}/state"
         r = requests.put(url, json=state)
@@ -97,7 +97,8 @@ class KaffeeBarGui(DeconzClient):
             self.set_state({"on": True, "bri": MIN_BRIGHTNESS})
             time.sleep(0.25)
         self.set_state(orig)
-        
+
+
 class Kaffeemaschine(DeconzClient):
     def __init__(self):
         super().__init__("Kaffeemaschine")
@@ -120,7 +121,9 @@ def refresh():
 
     # find the object for which the script is configured
     try:
-        my_id, my_obj = [(_id, obj) for _id, obj in data.items() if obj[ATTRIB] == TARGET][0]
+        my_id, my_obj = [
+            (_id, obj) for _id, obj in data.items() if obj[ATTRIB] == TARGET
+        ][0]
     except:
         logging.error("Failed to find object with %s = %s", ATTRIB, TARGET)
         return
@@ -153,5 +156,3 @@ if __name__ == "__main__":
     gui.show_listening()
     time.sleep(3)
     gui.done()
-    
-    
