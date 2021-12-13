@@ -1,2 +1,3 @@
 picovoice
+pvrecorder
 python-dotenv
