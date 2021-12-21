@@ -55,14 +55,13 @@ class AcknowledgeThread(Thread):
         super().__init__()
 
     def run(self):
-        orig = {"on": self.gui.on, "bri": self.gui.bri}        
+        orig = {"on": self.gui.on, "bri": self.gui.bri}
         for _ in range(2):
             self.gui.set_state(on=True, bri=110)
             time.sleep(0.2)
             self.gui.set_state(on=True, bri=MIN_BRIGHTNESS)
             time.sleep(0.2)
         self.gui.set_state(**orig)
-        
 
 class DeconzClient:
     def __init__(self, name, url):
@@ -85,7 +84,7 @@ class DeconzClient:
             logging.error("Failed to PUT new light status: %s", json.dumps(kwargs))
             r.raise_for_status()
             return
-        logging.info("Updated state to %s", json.dumps(kwargs))
+        logging.debug("Updated state to %s", json.dumps(kwargs))
 
     def set_action(self, **kwargs):
         url = f"{self.url}/{self._id}/action"
@@ -94,8 +93,8 @@ class DeconzClient:
             logging.error("Failed to PUT new group status: %s", json.dumps(kwargs))
             r.raise_for_status()
             return
-        logging.info("Updated action to %s", json.dumps(kwargs))
-        
+        logging.debug("Updated action to %s", json.dumps(kwargs))
+
 
     def recall_scene(self, scene_name):
         # need to find the id
@@ -108,7 +107,7 @@ class DeconzClient:
                     logging.error("Failed to PUT scene: %s", scene_name)
                     r.raise_for_status()
                     return
-                logging.info("Updated scene to %s", scene_name)
+                logging.debug("Updated scene to %s", scene_name)
 
     def _refresh(self):
         url = f"{self.url}/{self._id}"
@@ -145,9 +144,6 @@ class KaffeeBarGui(DeconzClient):
         self.refresh()
         self.thread = AcknowledgeThread(self)
         self.thread.start()
-        self.thread.join()
-        self.thread = None
-
 
 class Kaffeemaschine(DeconzClient):
     def __init__(self):

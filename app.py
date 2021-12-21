@@ -60,7 +60,6 @@ class PicovoiceApp(Thread):
     def _inference_callback(inference):
         if inference.is_understood:
             gui.done()
-            gui.acknowledge()
             print("{")
             print("  intent : '%s'" % inference.intent)
             print("  slots : {")
@@ -70,6 +69,7 @@ class PicovoiceApp(Thread):
             print("}\n")
             if inference.intent == "changeState":
                 if inference.slots["object"] in ("Maschine", "Maschinchen"):
+                    gui.acknowledge()
                     if inference.slots["state"] == "an":
                         coffee_machine.on()
                     elif inference.slots["state"] == "aus":
@@ -116,6 +116,7 @@ class PicovoiceApp(Thread):
                     wav_file.writeframes(struct.pack("h" * len(pcm), *pcm))
 
                 self._picovoice.process(pcm)
+
         except KeyboardInterrupt:
             sys.stdout.write("\b" * 2)
             print("Stopping ...")
