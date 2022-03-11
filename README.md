@@ -15,3 +15,16 @@ In order to use the apt-get installed numpy (which does not cause an Illegal Ins
 ```bash
 export PYTHONPATH=/usr/lib/python3/dist-packages
 ```
+
+
+### Set up service
+
+```bash
+# as su
+cp kartoffel.service /lib/systemd/system/
+chmod 644 /lib/systemd/system/kartoffel.service
+systemctl daemon-reload
+systemctl enable kartoffel.service
+systemctl start kartoffel.service
+systemctl status kartoffel.service
+```

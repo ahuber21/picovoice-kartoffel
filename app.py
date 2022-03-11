@@ -1,6 +1,7 @@
 import os
 import sys
 import struct
+import time
 import wave
 from threading import Thread
 from dotenv import load_dotenv
@@ -9,11 +10,21 @@ import numpy as np
 from picovoice import Picovoice
 from pvrecorder import PvRecorder
 
-from lib.deconz import KaffeeBarGui, Kaffeemaschine, Lights
+from lib.deconz import (
+    KaffeeBarGui,
+    Kaffeemaschine,
+    Lights,
+    Neon,
+    Weihnachtsstern,
+)
 
 gui = KaffeeBarGui()
 coffee_machine = Kaffeemaschine()
 lights = Lights()
+neon = Neon()
+weihnachtsstern = Weihnachtsstern()
+
+DEFAULT_AUDIO_DEVICE_NAME = "Built-in Audio Stereo"
 
 class PicovoiceApp(Thread):
     def __init__(
@@ -69,7 +80,7 @@ class PicovoiceApp(Thread):
             print("}\n")
             if inference.intent == "changeState":
                 if inference.slots["object"] in ("Maschine", "Maschinchen"):
-                    gui.acknowledge()
+                    # gui.acknowledge()
                     if inference.slots["state"] == "an":
                         coffee_machine.on()
                     elif inference.slots["state"] == "aus":
@@ -77,8 +88,12 @@ class PicovoiceApp(Thread):
                 elif inference.slots["object"] == "Lichter":
                     if inference.slots["state"] == "an":
                         lights.on()
+                        neon.on()
+                        weihnachtsstern.on()
                     elif inference.slots["state"] == "aus":
                         lights.off()
+                        neon.off()
+                        weihnachtsstern.off()
                     elif inference.slots["state"] == "Film":
                         lights.recall_scene("Film")
                     elif inference.slots["state"] == "Frühstück":
@@ -136,26 +151,31 @@ class PicovoiceApp(Thread):
         for i in range(len(devices)):
             print(f"index: {i}, device name: {devices[i]}")
 
+    @classmethod
+    def get_default_device_index(cls) -> int:
+        devices = PvRecorder.get_audio_devices()
+        for idx, device in enumerate(devices):
+            if device == DEFAULT_AUDIO_DEVICE_NAME or device == "":
+                return idx
+        raise ValueError(f"No audio device '{DEFAULT_AUDIO_DEVICE_NAME}' found")
+
 
 def main():
-    if not os.getenv("AUDIO_DEVICE_INDEX"):
-        PicovoiceApp.show_audio_devices()
-        print(
-            "Please select a device from the above list and add its index as AUDIO_DEVICE_INDEX to your .env file"
-        )
-    else:
-        PicovoiceApp(
-            access_key=os.environ["ACCESS_KEY"],
-            audio_device_index=int(os.environ["AUDIO_DEVICE_INDEX"]),
-            keyword_path=cwd(os.environ["KEYWORD_FILE_PATH"]),
-            context_path=cwd(os.environ["CONTEXT_FILE_PATH"]),
-            porcupine_model_path=cwd(os.environ["PORCUPINE_MODEL_FILE_PATH"]),
-            porcupine_sensitivity=0.5,
-            rhino_model_path=cwd(os.environ["RHINO_MODEL_FILE_PATH"]),
-            rhino_sensitivity=0.5,
-            # require_endpoint=require_endpoint,
+    print("Available audio devices:")
+    PicovoiceApp.show_audio_devices()
+    idx = os.getenv("AUDIO_DEVICE_INDEX") or PicovoiceApp.get_default_device_index()
+    PicovoiceApp(
+        access_key=os.environ["ACCESS_KEY"],
+        audio_device_index=int(idx),
+        keyword_path=cwd(os.environ["KEYWORD_FILE_PATH"]),
+        context_path=cwd(os.environ["CONTEXT_FILE_PATH"]),
+        porcupine_model_path=cwd(os.environ["PORCUPINE_MODEL_FILE_PATH"]),
+        porcupine_sensitivity=0.5,
+        rhino_model_path=cwd(os.environ["RHINO_MODEL_FILE_PATH"]),
+        rhino_sensitivity=0.5,
+        # require_endpoint=require_endpoint,
             output_path=None,
-        ).run()
+    ).run()
 
 
 def cwd(relative):

@@ -1,0 +1,15 @@
+[Unit]
+Description=diy-alex-kartoffel
+After=multi-user.target
+
+[Service]
+Type=simple
+User=pi
+Group=pi
+Environment="PYTHONPATH=/usr/lib/python3/dist-packages"
+WorkingDirectory=/opt/diy-alexa/picovoice-kartoffel/
+ExecStart=/opt/diy-alexa/picovoice-kartoffel/venv/bin/python3 /opt/diy-alexa/picovoice-kartoffel/app.py
+Restart=always
+
+[Install]
+WantedBy=multi-user.target

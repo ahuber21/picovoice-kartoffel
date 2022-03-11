@@ -22,29 +22,12 @@ class ShowListeningThread(Thread):
         super().__init__()
 
     def run(self):
-        bri = max(MIN_BRIGHTNESS, self.gui.bri)
-        stop = False
-        while not stop and not self.stop.is_set():
-            for x in range(2):
-                if self.stop.is_set():
-                    stop = True
-                    break
-                self.gui.set_state(on=True, bri=bri+20*x)
-                time.sleep(0.2)
-                if self.stop.is_set():
-                    stop = True
-                    break
-            if stop:
-                break
-            for x in reversed(range(1)):
-                if self.stop.is_set():
-                    stop = True
-                    break
-                self.gui.set_state(on=True, bri=bri+20*x)
-                time.sleep(0.2)
-                if self.stop.is_set():
-                    stop = True
-                    break
+        on = True
+        bri = self.orig_bri if self.orig_on else 110
+        while not self.stop.is_set():
+            on = not on
+            self.gui.set_state(on=on, bri=bri)
+            time.sleep(0.4)
         # restore original state
         self.gui.set_state(on=self.orig_on, bri=self.orig_bri)
 
@@ -66,7 +49,10 @@ class AcknowledgeThread(Thread):
 class DeconzClient:
     def __init__(self, name, url):
         self.url = url
-        r = requests.get(self.url)
+        try:
+            r = requests.get(self.url)
+        except Exception as e:
+            raise RuntimeError(f"Failed to initialize DeconzClient {name} with URL {url}") from e
         if r.status_code != 200:
             logging.error("Failed to GET current light status")
             return
@@ -102,7 +88,7 @@ class DeconzClient:
         for scene in data["scenes"]:
             if scene["name"] == scene_name:
                 url = f"{self.url}/{self._id}/scenes/{scene['id']}/recall"
-                r = requests.put(url, timeout=0.025)
+                r = requests.put(url, timeout=2)
                 if r.status_code != 200:
                     logging.error("Failed to PUT scene: %s", scene_name)
                     r.raise_for_status()
@@ -111,7 +97,7 @@ class DeconzClient:
 
     def _refresh(self):
         url = f"{self.url}/{self._id}"
-        r = requests.get(url, timeout=0.025)
+        r = requests.get(url, timeout=2)
         return json.loads(r.text)
 
 
@@ -129,6 +115,7 @@ class KaffeeBarGui(DeconzClient):
         self.bri = data["state"]["bri"]
 
     def show_listening(self):
+        self.refresh()
         self.thread = ShowListeningThread(self)
         self.thread.start()
 
@@ -168,6 +155,27 @@ class Lights(DeconzClient):
 
     def scene(self, scene_name):
         self.recall_scene(scene_name)
+
+class Neon(DeconzClient):
+    def __init__(self):
+        super().__init__("Neon", GROUPS_URL)
+
+    def on(self):
+        self.set_action(on=True)
+
+    def off(self):
+        self.set_action(on=False)
+
+class Weihnachtsstern(DeconzClient):
+    def __init__(self):
+        super().__init__("Weihnachtsstern", LIGHTS_URL)
+
+    def on(self):
+        self.set_state(on=True)
+
+    def off(self):
+        self.set_state(on=False)
+
 
 if __name__ == "__main__":
     lights = Lights()
