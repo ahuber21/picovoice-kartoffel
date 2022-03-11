@@ -48,30 +48,26 @@ class PicovoiceApp(Thread):
     ):
         super().__init__()
 
-        self._picovoice = Picovoice(
-            access_key=access_key,
-            keyword_path=keyword_path,
-            wake_word_callback=self._wake_word_callback,
-            context_path=context_path,
-            inference_callback=self._inference_callback,
-            porcupine_library_path=porcupine_library_path,
-            porcupine_model_path=porcupine_model_path,
-            porcupine_sensitivity=porcupine_sensitivity,
-            rhino_library_path=rhino_library_path,
-            rhino_model_path=rhino_model_path,
-            rhino_sensitivity=rhino_sensitivity,
-            require_endpoint=require_endpoint,
-        )
-
+        self.access_key = access_key
         self.audio_device_index = audio_device_index
+        self.keyword_path = keyword_path
+        self.context_path = context_path
+        self.porcupine_library_path = porcupine_library_path
+        self.porcupine_model_path = porcupine_model_path
+        self.porcupine_sensitivity = porcupine_sensitivity
+        self.rhino_library_path = rhino_library_path
+        self.rhino_model_path = rhino_model_path
+        self.rhino_sensitivity = rhino_sensitivity
+        self.require_endpoint = require_endpoint
         self.output_path = output_path
 
+        self.picovoice = None
         self.recorder = None
         self.wav_file = None
 
     @staticmethod
     def _wake_word_callback():
-        log.info("[wake word]\n")
+        log.info("[wake word]")
         gui.show_listening()
 
     @staticmethod
@@ -114,9 +110,24 @@ class PicovoiceApp(Thread):
             gui.done()
 
     def __enter__(self):
+        self.picovoice = Picovoice(
+            access_key=self.access_key,
+            keyword_path=self.keyword_path,
+            wake_word_callback=PicovoiceApp._wake_word_callback,
+            context_path=self.context_path,
+            inference_callback=PicovoiceApp._inference_callback,
+            porcupine_library_path=self.porcupine_library_path,
+            porcupine_model_path=self.porcupine_model_path,
+            porcupine_sensitivity=self.porcupine_sensitivity,
+            rhino_library_path=self.rhino_library_path,
+            rhino_model_path=self.rhino_model_path,
+            rhino_sensitivity=self.rhino_sensitivity,
+            require_endpoint=self.require_endpoint,
+        )
+
         self.recorder = PvRecorder(
                     device_index=self.audio_device_index,
-                    frame_length=self._picovoice.frame_length,
+                    frame_length=self.picovoice.frame_length,
                 )
         if self.output_path is not None:
             self.wav_file = wave.open(self.output_path, "w")
@@ -133,7 +144,9 @@ class PicovoiceApp(Thread):
             self.wav_file.close()
             self.wav_file = None
 
-        # self._picovoice.delete()
+        if self.picovoice is not None:
+            self.picovoice.delete()
+            self.picovoice = None
 
     def run(self):
         if not self.recorder:
@@ -150,7 +163,7 @@ class PicovoiceApp(Thread):
             if self.wav_file is not None:
                 self.wav_file.writeframes(struct.pack("h" * len(pcm), *pcm))
 
-            self._picovoice.process(pcm)
+            self.picovoice.process(pcm)
 
     @classmethod
     def show_audio_devices(cls):
@@ -189,6 +202,11 @@ def main():
                 app.run()
         except KeyboardInterrupt:
             break
+        except OSError as e:
+            log.error(e)
+            log.error("Sleeping for 1s and moving on...")
+            time.sleep(1)
+            continue
 
 def cwd(relative):
     return os.path.join(os.getcwd(), relative)
