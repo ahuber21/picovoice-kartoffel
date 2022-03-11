@@ -1,14 +1,15 @@
+from dotenv import load_dotenv
+import logging
+import numpy as np
 import os
+from picovoice import Picovoice
+from pvrecorder import PvRecorder
 import sys
 import struct
 import time
-import wave
 from threading import Thread
-from dotenv import load_dotenv
-
-import numpy as np
-from picovoice import Picovoice
-from pvrecorder import PvRecorder
+import time
+import wave
 
 from lib.deconz import (
     KaffeeBarGui,
@@ -17,6 +18,9 @@ from lib.deconz import (
     Neon,
     Weihnachtsstern,
 )
+
+log = logging.getLogger("[kartoffel-app]")
+log.setLevel(logging.INFO)
 
 gui = KaffeeBarGui()
 coffee_machine = Kaffeemaschine()
@@ -62,22 +66,25 @@ class PicovoiceApp(Thread):
         self.audio_device_index = audio_device_index
         self.output_path = output_path
 
+        self.recorder = None
+        self.wav_file = None
+
     @staticmethod
     def _wake_word_callback():
-        print("[wake word]\n")
+        log.info("[wake word]\n")
         gui.show_listening()
 
     @staticmethod
     def _inference_callback(inference):
         if inference.is_understood:
             gui.done()
-            print("{")
-            print("  intent : '%s'" % inference.intent)
-            print("  slots : {")
+            log.info("{")
+            log.info("  intent : '%s'", inference.intent)
+            log.info("  slots : {")
             for slot, value in inference.slots.items():
-                print("    %s : '%s'" % (slot, value))
-            print("  }")
-            print("}\n")
+                log.info("    %s : '%s'", slot, value)
+            log.info("  }")
+            log.info("}\n")
             if inference.intent == "changeState":
                 if inference.slots["object"] in ("Maschine", "Maschinchen"):
                     # gui.acknowledge()
@@ -103,53 +110,54 @@ class PicovoiceApp(Thread):
                     elif inference.slots["state"] == "Bar":
                         lights.recall_scene("Kaffeebar only")
         else:
-            print("Didn't understand the command.\n")
+            log.info("Didn't understand the command.\n")
             gui.done()
 
+    def __enter__(self):
+        self.recorder = PvRecorder(
+                    device_index=self.audio_device_index,
+                    frame_length=self._picovoice.frame_length,
+                )
+        if self.output_path is not None:
+            self.wav_file = wave.open(self.output_path, "w")
+            self.wav_file.setparams((1, 2, 16000, 512, "NONE", "NONE"))
+
+        return self
+
+    def __exit__(self, *_):
+        if self.recorder is not None:
+            self.recorder.delete()
+            self.recorder = None
+
+        if self.wav_file is not None:
+            self.wav_file.close()
+            self.wav_file = None
+
+        # self._picovoice.delete()
+
     def run(self):
-        recorder = None
-        wav_file = None
+        if not self.recorder:
+            raise ValueError("No recorder set up")
 
-        try:
-            recorder = PvRecorder(
-                device_index=self.audio_device_index,
-                frame_length=self._picovoice.frame_length,
-            )
-            recorder.start()
+        self.recorder.start()
 
-            if self.output_path is not None:
-                wav_file = wave.open(self.output_path, "w")
-                wav_file.setparams((1, 2, 16000, 512, "NONE", "NONE"))
+        log.info(f"Using device: {self.recorder.selected_device}")
+        log.info("[Listening ...]")
 
-            print(f"Using device: {recorder.selected_device}")
-            print("[Listening ...]")
+        while True:
+            pcm = self.recorder.read()
 
-            while True:
-                pcm = recorder.read()
+            if self.wav_file is not None:
+                self.wav_file.writeframes(struct.pack("h" * len(pcm), *pcm))
 
-                if wav_file is not None:
-                    wav_file.writeframes(struct.pack("h" * len(pcm), *pcm))
-
-                self._picovoice.process(pcm)
-
-        except KeyboardInterrupt:
-            sys.stdout.write("\b" * 2)
-            print("Stopping ...")
-        finally:
-            if recorder is not None:
-                recorder.delete()
-
-            if wav_file is not None:
-                wav_file.close()
-
-            self._picovoice.delete()
+            self._picovoice.process(pcm)
 
     @classmethod
     def show_audio_devices(cls):
         devices = PvRecorder.get_audio_devices()
 
         for i in range(len(devices)):
-            print(f"index: {i}, device name: {devices[i]}")
+            log.info(f"index: {i}, device name: {devices[i]}")
 
     @classmethod
     def get_default_device_index(cls) -> int:
@@ -161,26 +169,29 @@ class PicovoiceApp(Thread):
 
 
 def main():
-    print("Available audio devices:")
+    log.info("Available audio devices:")
     PicovoiceApp.show_audio_devices()
     idx = os.getenv("AUDIO_DEVICE_INDEX") or PicovoiceApp.get_default_device_index()
-    PicovoiceApp(
-        access_key=os.environ["ACCESS_KEY"],
-        audio_device_index=int(idx),
-        keyword_path=cwd(os.environ["KEYWORD_FILE_PATH"]),
-        context_path=cwd(os.environ["CONTEXT_FILE_PATH"]),
-        porcupine_model_path=cwd(os.environ["PORCUPINE_MODEL_FILE_PATH"]),
-        porcupine_sensitivity=0.5,
-        rhino_model_path=cwd(os.environ["RHINO_MODEL_FILE_PATH"]),
-        rhino_sensitivity=0.5,
-        # require_endpoint=require_endpoint,
-            output_path=None,
-    ).run()
-
+    while True:
+        try:
+            with PicovoiceApp(
+                    access_key=os.environ["ACCESS_KEY"],
+                    audio_device_index=int(idx),
+                    keyword_path=cwd(os.environ["KEYWORD_FILE_PATH"]),
+                    context_path=cwd(os.environ["CONTEXT_FILE_PATH"]),
+                    porcupine_model_path=cwd(os.environ["PORCUPINE_MODEL_FILE_PATH"]),
+                    porcupine_sensitivity=0.5,
+                    rhino_model_path=cwd(os.environ["RHINO_MODEL_FILE_PATH"]),
+                    rhino_sensitivity=0.5,
+                    # require_endpoint=require_endpoint,
+                    output_path=None,
+            ) as app:
+                app.run()
+        except KeyboardInterrupt:
+            break
 
 def cwd(relative):
     return os.path.join(os.getcwd(), relative)
-
 
 if __name__ == "__main__":
     load_dotenv()
