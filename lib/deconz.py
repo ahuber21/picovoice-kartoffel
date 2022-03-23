@@ -13,6 +13,8 @@ MIN_BRIGHTNESS = 20
 
 
 class ShowListeningThread(Thread):
+    timeout = 10
+
     def __init__(self, gui):
         self.gui = gui
         self.stop = Event()
@@ -22,9 +24,10 @@ class ShowListeningThread(Thread):
         super().__init__()
 
     def run(self):
+        start_time = time.time()
         on = True
         bri = self.orig_bri if self.orig_on else 110
-        while not self.stop.is_set():
+        while not self.stop.is_set() and time.time() < start_time + self.timeout:
             on = not on
             self.gui.set_state(on=on, bri=bri)
             time.sleep(0.4)
